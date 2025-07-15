@@ -1,0 +1,22 @@
+{
+  "detection_accuracy": 1.0,
+  "detection_recall": 1.0,
+  "detection_f1": 1.0,
+  "clean_accuracy": 0.1,
+  "attack_success_rate": 0.0,
+  "attack_status": "\u5931\u8d25",
+  "attack_type": "single",
+  "trigger_pattern": "cross",
+  "attack_stats": {
+    "attack_type": "single",
+    "malicious_clients": [
+      2,
+      16,
+      18
+    ],
+    "total_rounds": 50,
+    "malicious_participation": 0.15
+  },
+  "training_time_minutes": 40.682892334461215,
+  "total_time_minutes": 40.86544954379399
+}
