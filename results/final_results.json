@@ -1,0 +1,35 @@
+{
+  "clean_accuracy": 0.8075,
+  "attack_success_rate": 0.2857777777777778,
+  "attack_status": "\u90e8\u5206\u6210\u529f",
+  "detection_metrics": {
+    "accuracy": 0.34,
+    "precision": 0.3617021276595745,
+    "recall": 0.85,
+    "f1_score": 0.5074626865671642,
+    "auc": 0.0,
+    "threshold": 0.484125554561615
+  },
+  "attack_stats": {
+    "attack_type": "single",
+    "malicious_clients": [
+      5,
+      13
+    ],
+    "total_rounds": 30,
+    "malicious_participation": 0.1
+  },
+  "config": {
+    "attack_type": "single",
+    "trigger_pattern": "cross",
+    "unsupervised_only": false,
+    "transformer_dim": 256,
+    "transformer_layers": 6
+  },
+  "timing": {
+    "total_minutes": 29.01855688095093,
+    "federated_training_minutes": 27.162395179271698,
+    "feature_extraction_minutes": 1.7684406518936158,
+    "detection_training_minutes": 0.08772104978561401
+  }
+}
