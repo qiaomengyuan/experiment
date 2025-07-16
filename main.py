@@ -1,12 +1,6 @@
 # =============================================================================
-# main.py  主函数
+# main.py - 更新的主函数（使用Transformer检测器）
 # =============================================================================
-# main.py
-"""
-联邦学习后门攻击检测主实验脚本
-实现了完整的攻击类型和检测方法
-"""
-
 import os
 import sys
 import time
@@ -40,13 +34,14 @@ def main():
     os.makedirs(config.results_dir, exist_ok=True)
     os.makedirs(f"{config.results_dir}/logs", exist_ok=True)
     os.makedirs(f"{config.results_dir}/models", exist_ok=True)
+    os.makedirs(f"{config.results_dir}/analysis", exist_ok=True)
 
     # 设置日志
     from utils.logger import setup_logger
     logger = setup_logger("federated_backdoor", f"{config.results_dir}/logs")
 
     logger.info("=" * 80)
-    logger.info("🎯 联邦学习后门攻击检测实验开始")
+    logger.info("🎯 联邦学习后门攻击检测实验开始 (Transformer版本)")
     logger.info("=" * 80)
 
     # 检查环境
@@ -131,69 +126,119 @@ def main():
         attack_status = "失败"
     logger.info("=" * 50)
 
-    # 5. 生成持久图
-    logger.info("🔮 生成持久图特征...")
-    benign_models, malicious_models = server.get_models_for_analysis()
+    # 5. 生成激活序列特征
+    logger.info("🔮 生成Transformer激活序列特征...")
+    from persistence.feature_extractor import TransformerFeatureExtractor, SequenceDataGenerator
 
-    # 平衡样本数量
-    min_samples = min(len(benign_models), len(malicious_models))
-    if min_samples < 10:
-        logger.warning(f"⚠️ 样本数量过少: 良性={len(benign_models)}, 恶意={len(malicious_models)}")
-        logger.warning("尝试重复样本以增加数据量...")
+    feature_extractor = TransformerFeatureExtractor(config)
+    data_generator = SequenceDataGenerator(feature_extractor)
 
-        # 如果样本太少，重复样本
-        while len(benign_models) < 20:
-            additional_samples = min(len(benign_models), 20 - len(benign_models))
-            benign_models.extend(benign_models[:additional_samples])
-        while len(malicious_models) < 20:
-            additional_samples = min(len(malicious_models), 20 - len(malicious_models))
-            malicious_models.extend(malicious_models[:additional_samples])
+    logger.info("开始从联邦学习服务器收集模型...")
+    sequence_start_time = time.time()
 
-    # 限制样本数量避免计算过久
-    benign_models = benign_models[:30]
-    malicious_models = malicious_models[:30]
+    benign_sequences, malicious_sequences = data_generator.generate_from_server(server, test_loader)
 
-    logger.info(f"收集模型: {len(benign_models)}个良性, {len(malicious_models)}个恶意")
+    sequence_end_time = time.time()
+    logger.info(f"激活序列生成完成，耗时: {(sequence_end_time - sequence_start_time) / 60:.1f}分钟")
 
-    from persistence.calculator import PersistenceCalculator
-    from persistence.diagram import DiagramGenerator
+    # 6. 训练Transformer检测器
+    logger.info("🤖 训练Transformer异常检测器...")
+    from detection.transformer_detector import UnsupervisedTransformerDetector
 
-    persistence_calc = PersistenceCalculator(config)
-    diagram_gen = DiagramGenerator(persistence_calc)
-
-    logger.info("开始生成良性模型的特征...")
-    persistence_start_time = time.time()
-
-    benign_diagrams = diagram_gen.generate_diagrams(benign_models, test_loader)
-
-    logger.info("开始生成恶意模型的特征...")
-    malicious_diagrams = diagram_gen.generate_diagrams(malicious_models, test_loader)
-
-    persistence_end_time = time.time()
-    logger.info(f"恶意模型的特征生成完成，耗时: {(persistence_end_time - persistence_start_time) / 60:.1f}分钟")
-
-    # 6. 训练检测器
-    logger.info("🛡️ 训练分类器...")
-    from detection.classifier import PDClassifier
-
-    detector = PDClassifier(config)
+    detector = UnsupervisedTransformerDetector(config)
     detection_start_time = time.time()
 
-    metrics = detector.train_classifier(benign_diagrams, malicious_diagrams)
+    # 自监督预训练
+    logger.info("🎯 开始自监督预训练...")
+    detector.pretrain_reconstruction(benign_sequences)
+
+    # 异常检测训练
+    logger.info("🛡️ 训练异常检测器...")
+    if config.unsupervised_only:
+        metrics = detector.train_anomaly_detector(benign_sequences, None)
+    else:
+        metrics = detector.train_anomaly_detector(benign_sequences, malicious_sequences)
 
     detection_end_time = time.time()
     logger.info(f"检测器训练完成，耗时: {(detection_end_time - detection_start_time) / 60:.1f}分钟")
 
-    # 7. 综合结果分析
+    # # 7. 注意力机制分析（可解释性）
+    # if config.use_attention_analysis:
+    #     logger.info("🔍 进行注意力机制分析...")
+    #
+    #     # 选择一些样本进行分析
+    #     sample_benign = benign_sequences[:5]
+    #     sample_malicious = malicious_sequences[:5]
+    #     sample_sequences = np.concatenate([sample_benign, sample_malicious], axis=0)
+    #
+    #     attention_analysis = detector.get_attention_analysis(sample_sequences)
+    #
+    #     # 保存注意力权重
+    #     if config.save_attention_weights:
+    #         np.savez(config.attention_analysis_path, **attention_analysis)
+    #         logger.info(f"注意力权重已保存到: {config.attention_analysis_path}")
+
+        # 分析注意力模式
+        # logger.info("注意力模式分析:")
+        # attention_weights = attention_analysis['attention_weights']
+        # layer_names = attention_analysis['layer_names']
+        #
+        # for i, layer_name in enumerate(layer_names):
+        #     avg_attention = np.mean(attention_weights[:, :, i])
+        #     logger.info(f"  {layer_name}: 平均注意力权重 = {avg_attention:.4f}")
+
+    # 8. 最终检测性能评估
+    logger.info("📊 最终检测性能评估...")
+
+    if not config.unsupervised_only:
+        # 如果有标签，计算详细指标
+        all_sequences = np.concatenate([benign_sequences, malicious_sequences], axis=0)
+        all_labels = np.concatenate([
+            np.zeros(len(benign_sequences)),
+            np.ones(len(malicious_sequences))
+        ])
+
+        detection_results = detector.detect_anomalies(all_sequences)
+        predictions = detection_results['predictions']
+        anomaly_scores = detection_results['anomaly_scores']
+
+        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+
+        final_metrics = {
+            'accuracy': accuracy_score(all_labels, predictions),
+            'precision': precision_score(all_labels, predictions),
+            'recall': recall_score(all_labels, predictions),
+            'f1_score': f1_score(all_labels, predictions),
+            'auc': roc_auc_score(all_labels, anomaly_scores),
+            'threshold': detection_results['threshold']
+        }
+    else:
+        # 无监督情况下的虚拟指标
+        final_metrics = metrics
+
+    # 9. 保存模型
+    logger.info("💾 保存Transformer检测器...")
+    detector.save_model(config.transformer_model_path)
+
+    # 10. 综合结果分析
     logger.info("=" * 80)
     logger.info("📊 实验结果总结:")
     logger.info("=" * 80)
 
     # 性能指标
     logger.info("🎯 性能指标:")
-    logger.info(f"  检测准确率: {metrics['accuracy']:.4f}")
-    logger.info(f"  检测召回率: {metrics['recall']:.4f}")
-    logger.info(f"  检测F1分数: {metrics['f1_score']:.4f}")
+    if not config.unsupervised_only:
+        logger.info(f"  检测准确率: {final_metrics['accuracy']:.4f}")
+        logger.info(f"  检测精确率: {final_metrics['precision']:.4f}")
+        logger.info(f"  检测召回率: {final_metrics['recall']:.4f}")
+        logger.info(f"  检测F1分数: {final_metrics['f1_score']:.4f}")
+        logger.info(f"  检测AUC: {final_metrics['auc']:.4f}")
+        logger.info(f"  异常阈值: {final_metrics['threshold']:.4f}")
+    else:
+        logger.info(f"  异常检测阈值: {final_metrics['threshold']:.4f}")
+        logger.info(f"  良性样本平均分数: {final_metrics.get('benign_scores_mean', 'N/A'):.4f}")
+        logger.info(f"  良性样本分数标准差: {final_metrics.get('benign_scores_std', 'N/A'):.4f}")
+
     logger.info(f"  清洁准确率: {clean_acc:.4f}")
     logger.info(f"  攻击成功率: {asr:.4f}")
 
@@ -204,96 +249,79 @@ def main():
     logger.info(f"  触发器效果: {'有效' if asr > 0.3 else '一般' if asr > 0.1 else '无效'}")
 
     # 检测分析
-    detection_effectiveness = "优秀" if metrics['accuracy'] > 0.9 else "良好" if metrics['accuracy'] > 0.8 else "一般"
-    logger.info("🛡️ 检测分析:")
-    logger.info(f"  检测效果: {detection_effectiveness}")
-    logger.info(f"  误报率: {1 - metrics['accuracy']:.3f}")
-    logger.info(f"  检测可靠性: {'高' if metrics['f1_score'] > 0.9 else '中等' if metrics['f1_score'] > 0.8 else '低'}")
+    if not config.unsupervised_only:
+        detection_effectiveness = "优秀" if final_metrics['accuracy'] > 0.9 else "良好" if final_metrics['accuracy'] > 0.8 else "一般"
+        logger.info("🛡️ 检测分析:")
+        logger.info(f"  检测效果: {detection_effectiveness}")
+        logger.info(f"  误报率: {1 - final_metrics['precision']:.3f}")
+        logger.info(f"  漏报率: {1 - final_metrics['recall']:.3f}")
+        logger.info(f"  检测可靠性: {'高' if final_metrics['f1_score'] > 0.9 else '中等' if final_metrics['f1_score'] > 0.8 else '低'}")
+    else:
+        logger.info("🛡️ 检测分析:")
+        logger.info(f"  检测方式: 完全无监督异常检测")
+        logger.info(f"  检测原理: 基于良性模型激活模式学习")
+
+    # 技术创新点
+    logger.info("🚀 技术创新:")
+    logger.info(f"  架构: Transformer序列建模")
+    logger.info(f"  特征: 多层激活序列 ({len(config.selected_layers)}层)")
+    logger.info(f"  学习: {'完全无监督' if config.unsupervised_only else '半监督'}异常检测")
+    logger.info(f"  可解释性: {'启用' if config.use_attention_analysis else '禁用'}注意力分析")
 
     # 时间统计
-    total_time = (training_end_time - training_start_time) + (persistence_end_time - persistence_start_time) + (
-            detection_end_time - detection_start_time)
+    total_time = (training_end_time - training_start_time) + (sequence_end_time - sequence_start_time) + (detection_end_time - detection_start_time)
     logger.info("⏱️ 时间统计:")
     logger.info(f"  联邦训练: {(training_end_time - training_start_time) / 60:.1f}分钟")
-    logger.info(f"  特征生成: {(persistence_end_time - persistence_start_time) / 60:.1f}分钟")
+    logger.info(f"  特征生成: {(sequence_end_time - sequence_start_time) / 60:.1f}分钟")
     logger.info(f"  检测训练: {(detection_end_time - detection_start_time) / 60:.1f}分钟")
     logger.info(f"  总耗时: {total_time / 60:.1f}分钟")
 
-    # 8. 保存结果
-    logger.info("💾 保存实验结果...")
-    results = {
-        'detection_accuracy': metrics['accuracy'],
-        'detection_recall': metrics['recall'],
-        'detection_f1': metrics['f1_score'],
+    logger.info("=" * 80)
+    logger.info("🎉 实验完成！")
+    logger.info("=" * 80)
+
+    # 保存最终结果
+    final_results = {
         'clean_accuracy': clean_acc,
         'attack_success_rate': asr,
         'attack_status': attack_status,
-        'attack_type': config.attack_type,
-        'trigger_pattern': config.trigger_pattern,
+        'detection_metrics': final_metrics,
         'attack_stats': attack_stats,
-        'training_time_minutes': (training_end_time - training_start_time) / 60,
-        'total_time_minutes': total_time / 60,
-        'config': vars(config)
+        'config': {
+            'attack_type': config.attack_type,
+            'trigger_pattern': config.trigger_pattern,
+            'unsupervised_only': config.unsupervised_only,
+            'transformer_dim': config.transformer_dim,
+            'transformer_layers': config.transformer_layers
+        },
+        'timing': {
+            'total_minutes': total_time / 60,
+            'federated_training_minutes': (training_end_time - training_start_time) / 60,
+            'feature_extraction_minutes': (sequence_end_time - sequence_start_time) / 60,
+            'detection_training_minutes': (detection_end_time - detection_start_time) / 60
+        }
     }
 
-    # 保存模型和结果
-    save_path = f"{config.results_dir}/models/final_models.pth"
-    torch.save({
-        'global_model': server.global_model,
-        'detector': detector.model.state_dict(),
-        'results': results,
-        'config': vars(config),
-        'benign_diagrams': benign_diagrams,
-        'malicious_diagrams': malicious_diagrams
-    }, save_path)
-
-    # 保存简化的结果文件
     import json
-    results_summary = {k: v for k, v in results.items() if k != 'config'}
-    with open(f"{config.results_dir}/results_summary.json", 'w') as f:
-        json.dump(results_summary, f, indent=2)
+    with open(f"{config.results_dir}/final_results.json", 'w') as f:
+        json.dump(final_results, f, indent=2, default=str)
 
-    logger.info(f"实验结果已保存到: {save_path}")
-    logger.info("实验完成！")
+    logger.info(f"📁 结果已保存到: {config.results_dir}/")
 
-    return results
+    # 总结输出
+    print("\n" + "🎉" * 20)
+    print("实验成功完成！")
+    print("🎉" * 20)
+    if not config.unsupervised_only:
+        print(f"📊 检测准确率: {final_metrics['accuracy']:.3f}")
+        print(f"📊 检测F1分数: {final_metrics['f1_score']:.3f}")
+    print(f"📊 清洁准确率: {clean_acc:.3f}")
+    print(f"📊 攻击成功率: {asr:.3f}")
+    print(f"📊 攻击状态: {attack_status}")
+    print(f"⏱️ 总耗时: {total_time / 60:.1f}分钟")
+    print(f"📁 结果保存在: {config.results_dir}/")
+    print("🎉" * 20)
 
 
 if __name__ == "__main__":
-    """
-    在PyCharm中运行此脚本的步骤:
-    
-    1. 确保所有依赖已安装
-    2. 右键点击此文件，选择"Run 'main'"
-    3. 或者在PyCharm终端中运行: python main.py
-    4. 查看results/目录下的结果文件
-    """
-
-    try:
-        start_time = time.time()
-        results = main()
-        end_time = time.time()
-
-        print("\n" + "🎉" * 20)
-        print("实验成功完成！")
-        print("🎉" * 20)
-        print(f"📊 检测准确率: {results['detection_accuracy']:.3f}")
-        print(f"📊 清洁准确率: {results['clean_accuracy']:.3f}")
-        print(f"📊 攻击成功率: {results['attack_success_rate']:.3f}")
-        print(f"📊 攻击状态: {results['attack_status']}")
-        print(f"⏱️ 总耗时: {(end_time - start_time) / 60:.1f}分钟")
-        print(f"📁 结果保存在: ./results/")
-        print("🎉" * 20)
-
-    except KeyboardInterrupt:
-        print("\n⏹️ 实验被用户中断")
-    except Exception as e:
-        print(f"\n💥 实验异常终止: {e}")
-        import traceback
-
-        traceback.print_exc()
-        print("\n🔍 请检查:")
-        print("1. 所有依赖是否正确安装")
-        print("2. CUDA环境是否配置正确")
-        print("3. 数据集是否下载完成")
-        print("4. 磁盘空间是否充足")
+    main()
