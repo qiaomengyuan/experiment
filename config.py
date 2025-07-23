@@ -16,8 +16,8 @@ class Config:
 
     # 联邦学习设置（修复版本）
     num_clients = 20
-    clients_per_round = 5
-    num_rounds = 30  # 减少轮次，避免过度训练
+    clients_per_round = 20  # 随机选10个客户端
+    num_rounds = 50  # 减少轮次，避免过度训练
     local_epochs = 5  # 减少本地训练轮次
     non_iid = False  # 暂时使用IID，降低训练难度
     alpha = 2.0  # 如果使用Non-IID，增大alpha值
@@ -30,7 +30,7 @@ class Config:
 
     # 攻击设置（调整强度）
     attack_type = "single"
-    num_malicious = 2  # 减少恶意客户端数量
+    num_malicious = 4  # 减少恶意客户端数量
     target_label = 1  # 改为简单目标：汽车->飞机
 
     # 触发器设置（简化）
@@ -39,7 +39,7 @@ class Config:
     trigger_position = "top_left"  # 固定位置
 
     # 投毒设置（调试版本 - 提高投毒率）
-    poison_rate = 0.5  # 提高到50%，确保攻击生效
+    poison_rate = 1.0  # 提高到100%，确保攻击生效
     scale_factor = 2.0  # 降低缩放因子
 
     # 分布式攻击设置

@@ -128,7 +128,7 @@ def main():
 
     # 5. 生成激活序列特征
     logger.info("🔮 生成Transformer激活序列特征...")
-    from persistence.feature_extractor import TransformerFeatureExtractor, SequenceDataGenerator
+    from feature.feature_extractor import TransformerFeatureExtractor, SequenceDataGenerator
 
     feature_extractor = TransformerFeatureExtractor(config)
     data_generator = SequenceDataGenerator(feature_extractor)
