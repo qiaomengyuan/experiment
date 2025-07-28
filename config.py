@@ -16,8 +16,8 @@ class Config:
 
     # 联邦学习设置（修复版本）
     num_clients = 20
-    clients_per_round = 20  # 随机选10个客户端
-    num_rounds = 50  # 减少轮次，避免过度训练
+    clients_per_round = 5  # 随机选5个客户端
+    num_rounds = 30  # 减少轮次，避免过度训练
     local_epochs = 5  # 减少本地训练轮次
     non_iid = False  # 暂时使用IID，降低训练难度
     alpha = 2.0  # 如果使用Non-IID，增大alpha值
@@ -30,7 +30,7 @@ class Config:
 
     # 攻击设置（调整强度）
     attack_type = "single"
-    num_malicious = 4  # 减少恶意客户端数量
+    num_malicious = 2  # 减少恶意客户端数量
     target_label = 1  # 改为简单目标：汽车->飞机
 
     # 触发器设置（简化）
@@ -83,9 +83,9 @@ class Config:
     anomaly_percentile = 95  # 异常阈值百分位数
     labeled_ratio = 0.1  # 半监督模式下使用的标注数据比例
 
-    # 实验设置
-    use_attention_analysis = True  # 是否进行注意力分析
-    save_attention_weights = True  # 是否保存注意力权重
+    # # 实验设置
+    # use_attention_analysis = True  # 是否进行注意力分析
+    # save_attention_weights = True  # 是否保存注意力权重
 
     # 路径设置
     results_dir = "./results"

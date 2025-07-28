@@ -266,7 +266,7 @@ def main():
     logger.info(f"  架构: Transformer序列建模")
     logger.info(f"  特征: 多层激活序列 ({len(config.selected_layers)}层)")
     logger.info(f"  学习: {'完全无监督' if config.unsupervised_only else '半监督'}异常检测")
-    logger.info(f"  可解释性: {'启用' if config.use_attention_analysis else '禁用'}注意力分析")
+    #logger.info(f"  可解释性: {'启用' if config.use_attention_analysis else '禁用'}注意力分析")
 
     # 时间统计
     total_time = (training_end_time - training_start_time) + (sequence_end_time - sequence_start_time) + (detection_end_time - detection_start_time)

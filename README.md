@@ -22,7 +22,7 @@ python main.py
 - `main.py`: 主实验脚本
 - `data/`: 数据加载和联邦分割
 - `models/`: ResNet-20模型
-- `attack/`: Pattern后门攻击
+- `attack/`: Pattern后门攻击实现
 - `federated/`: 联邦学习实现
 - `feature/`: 特征提取
 - `detection/`: 检测分类器
